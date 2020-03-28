@@ -39,7 +39,7 @@ func (p *Plugin) OnActivate() error {
 	command := &model.Command{
 		Trigger:          "whentochat",
 		AutoComplete:     true,
-		AutoCompleteDesc: "Find a good time to in everyone's timezone.",
+		AutoCompleteDesc: "Find a time to chat!",
 		DisplayName:      "When To Chat",
 	}
 	err = p.API.RegisterCommand(command)
