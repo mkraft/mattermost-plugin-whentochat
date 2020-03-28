@@ -91,22 +91,15 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	var earliestStart time.Time
 	var latestEnd time.Time
 
-	// strings to display for each user, keyed by user id
-	bestTimes := map[string]string{}
-
 	for i, user := range allUsers {
 		location := location(user)
 		if location == nil {
-			bestTimes[user.Id] = "?"
 			continue
 		}
 
 		now := time.Now()
 		userEarliestStart := time.Date(now.Year(), now.Month(), now.Day(), 7, 0, 0, 0, location)
 		userLatestEnd := time.Date(now.Year(), now.Month(), now.Day(), 22, 0, 0, 0, location)
-
-		fmt.Printf("userEarliestStart: %+v\n", userEarliestStart)
-		fmt.Printf("userLatestEnd: %+v\n", userLatestEnd)
 
 		if i == 0 {
 			earliestStart = userEarliestStart
@@ -120,9 +113,6 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		if userLatestEnd.Before(latestEnd) {
 			latestEnd = userLatestEnd
 		}
-
-		fmt.Printf("earliestStart: %+v\n", earliestStart)
-		fmt.Printf("latestEnd: %+v\n", latestEnd)
 	}
 
 	post := &model.Post{
@@ -131,7 +121,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	}
 
 	if earliestStart.After(latestEnd) {
-		post.Message = "There's no time that is good for everyone."
+		post.Message = "There is no window that suits everyone."
 		_ = p.API.SendEphemeralPost(args.UserId, post)
 		return &model.CommandResponse{}, nil
 	}
