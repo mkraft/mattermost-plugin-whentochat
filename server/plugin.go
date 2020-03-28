@@ -120,7 +120,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		ChannelId: args.ChannelId,
 	}
 
-	if earliestStart.After(latestEnd) {
+	if earliestStart.After(latestEnd) || earliestStart.Equal(latestEnd) {
 		post.Message = "There is no window that suits everyone."
 		_ = p.API.SendEphemeralPost(args.UserId, post)
 		return &model.CommandResponse{}, nil
