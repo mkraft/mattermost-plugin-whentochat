@@ -113,7 +113,12 @@ func (p *Plugin) allUsers(channelID string) ([]*model.User, *model.AppError) {
 		if err != nil {
 			return nil, err
 		}
-		allUsers = append(allUsers, usersBatch...)
+		for _, user := range usersBatch {
+			if user.IsBot {
+				continue
+			}
+			allUsers = append(allUsers, user)
+		}
 		if len(usersBatch) < batchSize {
 			break
 		}
