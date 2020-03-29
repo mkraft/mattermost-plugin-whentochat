@@ -72,26 +72,8 @@ func location(user *model.User) *time.Location {
 	return location
 }
 
-func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
-	var allUsers []*model.User
-	var page int
-	const batchSize = 100
-	for {
-		usersBatch, err := p.API.GetUsersInChannel(args.ChannelId, "username", page, batchSize)
-		if err != nil {
-			return nil, err
-		}
-		allUsers = append(allUsers, usersBatch...)
-		if len(usersBatch) < batchSize {
-			break
-		}
-		page++
-	}
-
-	var earliestStart time.Time
-	var latestEnd time.Time
-
-	for i, user := range allUsers {
+func window(users []*model.User) (start, end time.Time, ok bool) {
+	for i, user := range users {
 		location := location(user)
 		if location == nil {
 			continue
@@ -102,31 +84,80 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		userLatestEnd := time.Date(now.Year(), now.Month(), now.Day(), 22, 0, 0, 0, location)
 
 		if i == 0 {
-			earliestStart = userEarliestStart
-			latestEnd = userLatestEnd
+			start = userEarliestStart
+			end = userLatestEnd
 		}
 
-		if userEarliestStart.After(earliestStart) {
-			earliestStart = userEarliestStart
+		if userEarliestStart.After(start) {
+			start = userEarliestStart
 		}
 
-		if userLatestEnd.Before(latestEnd) {
-			latestEnd = userLatestEnd
+		if userLatestEnd.Before(end) {
+			end = userLatestEnd
+		}
+
+		if start.After(end) || start.Equal(end) {
+			ok = true
+			return
 		}
 	}
+	return
+}
+
+func (p *Plugin) allUsers(channelID string) ([]*model.User, *model.AppError) {
+	var allUsers []*model.User
+	var page int
+	const batchSize = 100
+	for {
+		usersBatch, err := p.API.GetUsersInChannel(channelID, "username", page, batchSize)
+		if err != nil {
+			return nil, err
+		}
+		allUsers = append(allUsers, usersBatch...)
+		if len(usersBatch) < batchSize {
+			break
+		}
+		page++
+	}
+	return allUsers, nil
+}
+
+func arrangeUserFirst(userID string, users []*model.User) []*model.User {
+	var indexOfUser int
+	for i, user := range users {
+		if user.Id == userID {
+			indexOfUser = i
+			break
+		}
+	}
+	sorted := []*model.User{users[indexOfUser]}
+	sorted = append(sorted, users[:indexOfUser]...)
+	sorted = append(sorted, users[indexOfUser+1:]...)
+	return sorted
+}
+
+func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+	allUsers, err := p.allUsers(args.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+
+	earliestStart, latestEnd, noSharedWindow := window(allUsers)
 
 	post := &model.Post{
 		UserId:    p.BotUserID,
 		ChannelId: args.ChannelId,
 	}
 
-	if earliestStart.After(latestEnd) || earliestStart.Equal(latestEnd) {
+	if noSharedWindow {
 		post.Message = "There is no window that suits everyone."
 		_ = p.API.SendEphemeralPost(args.UserId, post)
 		return &model.CommandResponse{}, nil
 	}
 
 	message := "It looks like the best times to chat are:\n"
+
+	allUsers = arrangeUserFirst(args.UserId, allUsers)
 
 	for _, user := range allUsers {
 		location := location(user)
