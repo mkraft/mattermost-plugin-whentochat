@@ -168,7 +168,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		walltimeStart := earliestStart.In(location)
 		walltimeEnd := latestEnd.In(location)
 		timeLayout := "3:04pm"
-		message = fmt.Sprintf("%s\n- %s %s: %s - %s %s", message, user.FirstName, user.LastName,
+		message = fmt.Sprintf("%s\n- %s: %s - %s %s", message, user.GetDisplayName("full_name"),
 			walltimeStart.Format(timeLayout),
 			walltimeEnd.Format(timeLayout),
 			walltimeEnd.Format("(MST)"))
