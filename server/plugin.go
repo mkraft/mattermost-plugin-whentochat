@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,8 +26,9 @@ type Plugin struct {
 	BotUserID string
 }
 
+// OnActivate initializes the plugin.
 func (p *Plugin) OnActivate() error {
-	botId, err := p.Helpers.EnsureBot(&model.Bot{
+	botID, err := p.Helpers.EnsureBot(&model.Bot{
 		Username:    "whentochat",
 		DisplayName: "When To Chat",
 		Description: "Created by the WhenToChat plugin.",
@@ -34,7 +36,7 @@ func (p *Plugin) OnActivate() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to ensure whentochat bot")
 	}
-	p.BotUserID = botId
+	p.BotUserID = botID
 
 	command := &model.Command{
 		Trigger:          "whentochat",
@@ -48,6 +50,78 @@ func (p *Plugin) OnActivate() error {
 	}
 
 	return nil
+}
+
+func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+	split := strings.Fields(args.Command)
+	command := split[0]
+	if command != "/whentochat" {
+		return &model.CommandResponse{}, nil
+	}
+
+	allUsers, err := p.allUsers(args.ChannelId)
+	if err != nil {
+		return nil, err
+	}
+
+	earliestStart, latestEnd, ok := window(allUsers)
+
+	post := &model.Post{
+		UserId:    p.BotUserID,
+		ChannelId: args.ChannelId,
+	}
+
+	if !ok {
+		post.Message = "There is no window that suits everyone."
+		_ = p.API.SendEphemeralPost(args.UserId, post)
+		return &model.CommandResponse{}, nil
+	}
+
+	message := "It looks like the best times to chat are:\n"
+
+	allUsers = arrangeUserFirst(args.UserId, allUsers)
+
+	for _, user := range allUsers {
+		location := location(user)
+		if location == nil {
+			message = fmt.Sprintf("%s\n- %s %s: ?", message, user.FirstName, user.LastName)
+			continue
+		}
+		walltimeStart := earliestStart.In(location)
+		walltimeEnd := latestEnd.In(location)
+		timeLayout := "3:04pm"
+		message = fmt.Sprintf("%s\n- %s: %s - %s %s", message, user.GetDisplayName("full_name"),
+			walltimeStart.Format(timeLayout),
+			walltimeEnd.Format(timeLayout),
+			walltimeEnd.Format("(MST)"))
+	}
+
+	post.Message = message
+	_ = p.API.SendEphemeralPost(args.UserId, post)
+	return &model.CommandResponse{}, nil
+}
+
+func (p *Plugin) allUsers(channelID string) ([]*model.User, *model.AppError) {
+	var allUsers []*model.User
+	var page int
+	const batchSize = 100
+	for {
+		usersBatch, err := p.API.GetUsersInChannel(channelID, "username", page, batchSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range usersBatch {
+			if user.IsBot {
+				continue
+			}
+			allUsers = append(allUsers, user)
+		}
+		if len(usersBatch) < batchSize {
+			break
+		}
+		page++
+	}
+	return allUsers, nil
 }
 
 func location(user *model.User) *time.Location {
@@ -104,29 +178,6 @@ func window(users []*model.User) (start, end time.Time, ok bool) {
 	return
 }
 
-func (p *Plugin) allUsers(channelID string) ([]*model.User, *model.AppError) {
-	var allUsers []*model.User
-	var page int
-	const batchSize = 100
-	for {
-		usersBatch, err := p.API.GetUsersInChannel(channelID, "username", page, batchSize)
-		if err != nil {
-			return nil, err
-		}
-		for _, user := range usersBatch {
-			if user.IsBot {
-				continue
-			}
-			allUsers = append(allUsers, user)
-		}
-		if len(usersBatch) < batchSize {
-			break
-		}
-		page++
-	}
-	return allUsers, nil
-}
-
 func arrangeUserFirst(userID string, users []*model.User) []*model.User {
 	var indexOfUser int
 	for i, user := range users {
@@ -139,49 +190,6 @@ func arrangeUserFirst(userID string, users []*model.User) []*model.User {
 	sorted = append(sorted, users[:indexOfUser]...)
 	sorted = append(sorted, users[indexOfUser+1:]...)
 	return sorted
-}
-
-func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
-	allUsers, err := p.allUsers(args.ChannelId)
-	if err != nil {
-		return nil, err
-	}
-
-	earliestStart, latestEnd, ok := window(allUsers)
-
-	post := &model.Post{
-		UserId:    p.BotUserID,
-		ChannelId: args.ChannelId,
-	}
-
-	if !ok {
-		post.Message = "There is no window that suits everyone."
-		_ = p.API.SendEphemeralPost(args.UserId, post)
-		return &model.CommandResponse{}, nil
-	}
-
-	message := "It looks like the best times to chat are:\n"
-
-	allUsers = arrangeUserFirst(args.UserId, allUsers)
-
-	for _, user := range allUsers {
-		location := location(user)
-		if location == nil {
-			message = fmt.Sprintf("%s\n- %s %s: ?", message, user.FirstName, user.LastName)
-			continue
-		}
-		walltimeStart := earliestStart.In(location)
-		walltimeEnd := latestEnd.In(location)
-		timeLayout := "3:04pm"
-		message = fmt.Sprintf("%s\n- %s: %s - %s %s", message, user.GetDisplayName("full_name"),
-			walltimeStart.Format(timeLayout),
-			walltimeEnd.Format(timeLayout),
-			walltimeEnd.Format("(MST)"))
-	}
-
-	post.Message = message
-	_ = p.API.SendEphemeralPost(args.UserId, post)
-	return &model.CommandResponse{}, nil
 }
 
 // See https://developers.mattermost.com/extend/plugins/server/reference/
