@@ -97,10 +97,10 @@ func window(users []*model.User) (start, end time.Time, ok bool) {
 		}
 
 		if start.After(end) || start.Equal(end) {
-			ok = true
 			return
 		}
 	}
+	ok = true
 	return
 }
 
@@ -147,14 +147,14 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		return nil, err
 	}
 
-	earliestStart, latestEnd, noSharedWindow := window(allUsers)
+	earliestStart, latestEnd, ok := window(allUsers)
 
 	post := &model.Post{
 		UserId:    p.BotUserID,
 		ChannelId: args.ChannelId,
 	}
 
-	if noSharedWindow {
+	if !ok {
 		post.Message = "There is no window that suits everyone."
 		_ = p.API.SendEphemeralPost(args.UserId, post)
 		return &model.CommandResponse{}, nil
