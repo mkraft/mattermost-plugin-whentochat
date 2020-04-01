@@ -148,14 +148,14 @@ func location(user *model.User) *time.Location {
 
 func window(users []*model.User) (start, end time.Time, ok bool) {
 	for i, user := range users {
-		location := location(user)
-		if location == nil {
+		loc := location(user)
+		if loc == nil {
 			continue
 		}
 
 		now := time.Now()
-		userEarliestStart := time.Date(now.Year(), now.Month(), now.Day(), 7, 0, 0, 0, location)
-		userLatestEnd := time.Date(now.Year(), now.Month(), now.Day(), 22, 0, 0, 0, location)
+		userEarliestStart := time.Date(now.Year(), now.Month(), now.Day(), 7, 0, 0, 0, loc)
+		userLatestEnd := time.Date(now.Year(), now.Month(), now.Day(), 22, 0, 0, 0, loc)
 
 		if i == 0 {
 			start = userEarliestStart
