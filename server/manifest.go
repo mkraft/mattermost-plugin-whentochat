@@ -28,7 +28,16 @@ const manifestStr = `
   "settings_schema": {
     "header": "",
     "footer": "",
-    "settings": []
+    "settings": [
+      {
+        "key": "max_channel_members",
+        "display_name": "Maximum channel members",
+        "type": "number",
+        "help_text": "",
+        "placeholder": "",
+        "default": null
+      }
+    ]
   }
 }
 `

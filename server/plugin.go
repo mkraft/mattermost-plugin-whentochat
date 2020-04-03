@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,6 +12,8 @@ import (
 	"github.com/mattermost/mattermost-server/v5/plugin"
 	"github.com/pkg/errors"
 )
+
+var errMaxChannelMembers = errors.New("max channel members")
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
 type Plugin struct {
@@ -53,23 +56,31 @@ func (p *Plugin) OnActivate() error {
 }
 
 func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*model.CommandResponse, *model.AppError) {
+	configuration := p.getConfiguration()
+
 	split := strings.Fields(args.Command)
 	command := split[0]
 	if command != "/whentochat" {
 		return &model.CommandResponse{}, nil
 	}
 
-	allUsers, err := p.allUsers(args.ChannelId)
-	if err != nil {
-		return nil, err
+	allUsers, err := p.allUsers(args.ChannelId, configuration.MaxChannelMembers)
+	if err != nil && !errors.Is(err, errMaxChannelMembers) {
+		return nil, model.NewAppError("whentochat (*Plugin).ExecuteCommand", "", nil, err.Error(), http.StatusInternalServerError)
 	}
-
-	earliestStart, latestEnd, ok := window(allUsers)
 
 	post := &model.Post{
 		UserId:    p.BotUserID,
 		ChannelId: args.ChannelId,
 	}
+
+	if err != nil && errors.Is(err, errMaxChannelMembers) {
+		post.Message = "Too many channel members."
+		_ = p.API.SendEphemeralPost(args.UserId, post)
+		return &model.CommandResponse{}, nil
+	}
+
+	earliestStart, latestEnd, ok := window(allUsers)
 
 	if !ok {
 		post.Message = "There is no window that suits everyone."
@@ -101,20 +112,23 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	return &model.CommandResponse{}, nil
 }
 
-func (p *Plugin) allUsers(channelID string) ([]*model.User, *model.AppError) {
+func (p *Plugin) allUsers(channelID string, limit int) ([]*model.User, error) {
 	var allUsers []*model.User
 	var page int
 	const batchSize = 100
 	for {
 		usersBatch, err := p.API.GetUsersInChannel(channelID, "username", page, batchSize)
 		if err != nil {
-			return nil, err
+			return nil, errors.New(err.Error())
 		}
 		for _, user := range usersBatch {
 			if user.IsBot {
 				continue
 			}
 			allUsers = append(allUsers, user)
+		}
+		if len(allUsers) > limit {
+			return allUsers, errMaxChannelMembers
 		}
 		if len(usersBatch) < batchSize {
 			break
