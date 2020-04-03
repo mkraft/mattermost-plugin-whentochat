@@ -13,6 +13,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const maxDisplayUserBullets = 50
+
 var errMaxChannelMembers = errors.New("max channel members")
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -88,26 +90,16 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 		return &model.CommandResponse{}, nil
 	}
 
-	message := "It looks like the best times to chat are:\n"
-
 	allUsers = arrangeUserFirst(args.UserId, allUsers)
 
-	for _, user := range allUsers {
-		location := location(user)
-		if location == nil {
-			message = fmt.Sprintf("%s\n- %s %s: ?", message, user.FirstName, user.LastName)
-			continue
-		}
-		walltimeStart := earliestStart.In(location)
-		walltimeEnd := latestEnd.In(location)
-		timeLayout := "3:04pm"
-		message = fmt.Sprintf("%s\n- %s: %s - %s %s", message, user.GetDisplayName("full_name"),
-			walltimeStart.Format(timeLayout),
-			walltimeEnd.Format(timeLayout),
-			walltimeEnd.Format("(MST)"))
+	var message string
+	if len(allUsers) <= maxDisplayUserBullets {
+		message = verboseDisplay(earliestStart, latestEnd, allUsers)
+	} else {
+		message = compactDisplay(earliestStart, latestEnd, allUsers)
 	}
 
-	post.Message = message
+	post.Message = "It looks like the best times to chat are:\n" + message
 	_ = p.API.SendEphemeralPost(args.UserId, post)
 	return &model.CommandResponse{}, nil
 }
@@ -204,6 +196,71 @@ func arrangeUserFirst(userID string, users []*model.User) []*model.User {
 	sorted = append(sorted, users[:indexOfUser]...)
 	sorted = append(sorted, users[indexOfUser+1:]...)
 	return sorted
+}
+
+func verboseDisplay(start, end time.Time, users []*model.User) string {
+	var message string
+	for _, user := range users {
+		loc := location(user)
+		if loc == nil {
+			message = fmt.Sprintf("%s\n- %s %s: ?", message, user.FirstName, user.LastName)
+			continue
+		}
+		walltimeStart := start.In(loc)
+		walltimeEnd := end.In(loc)
+		timeLayout := "3:04pm"
+		message = fmt.Sprintf("%s\n- %s: %s - %s %s", message, user.GetDisplayName("full_name"),
+			walltimeStart.Format(timeLayout),
+			walltimeEnd.Format(timeLayout),
+			walltimeEnd.Format("(MST)"))
+	}
+	return message
+}
+
+func compactDisplay(start, end time.Time, users []*model.User) string {
+	var message string
+
+	usersMap := usersByTimezone(users)
+
+	for _, users := range usersMap {
+		loc := location(users[0])
+
+		var othersMsg string
+		userCount := len(users)
+		if userCount > 1 {
+			if userCount == 2 {
+				othersMsg = " and 1 other"
+			} else {
+				othersMsg = fmt.Sprintf(" and %d others", userCount-1)
+			}
+		}
+
+		walltimeStart := start.In(loc)
+		walltimeEnd := end.In(loc)
+		timeLayout := "3:04pm"
+		message = fmt.Sprintf("%s\n- %s%s: %s - %s %s", message, users[0].GetDisplayName("full_name"),
+			othersMsg,
+			walltimeStart.Format(timeLayout),
+			walltimeEnd.Format(timeLayout),
+			walltimeEnd.Format("(MST)"))
+	}
+
+	return message
+}
+
+func usersByTimezone(users []*model.User) map[string][]*model.User {
+	umap := map[string][]*model.User{}
+	for _, user := range users {
+		locStr := location(user).String()
+		if locStr == "" {
+			continue
+		}
+		if _, ok := umap[locStr]; !ok {
+			umap[locStr] = []*model.User{}
+		}
+		umap[locStr] = append(umap[locStr], user)
+	}
+	return umap
 }
 
 // See https://developers.mattermost.com/extend/plugins/server/reference/
