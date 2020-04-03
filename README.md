@@ -4,7 +4,7 @@ Adds a slash command that displays an ephemeral post of the window of time when 
 
 ### Autosuggest
 
-![slash command autosuggest](https://user-images.githubusercontent.com/1149597/78191739-a3a02100-7444-11ea-9767-70b07732824d.png)
+![slash command autosuggest](https://user-images.githubusercontent.com/1149597/78407885-d4629080-75d3-11ea-8e82-902c4399190f.png)
 
 ### Expanded display (max 50 users)
 
