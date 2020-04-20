@@ -12,10 +12,10 @@ var manifest *model.Manifest
 
 const manifestStr = `
 {
-  "id": "com.mattermost.plugin-starter-template",
-  "name": "Plugin Starter Template",
-  "description": "This plugin serves as a starting point for writing a Mattermost plugin.",
-  "version": "0.1.0",
+  "id": "org.upspin.plugin-whentochat",
+  "name": "When To Chat",
+  "description": "Display the best time to chat across time zones.",
+  "version": "0.1.2",
   "min_server_version": "5.12.0",
   "server": {
     "executables": {
@@ -25,13 +25,19 @@ const manifestStr = `
     },
     "executable": ""
   },
-  "webapp": {
-    "bundle_path": "webapp/dist/main.js"
-  },
   "settings_schema": {
     "header": "",
     "footer": "",
-    "settings": []
+    "settings": [
+      {
+        "key": "max_channel_members",
+        "display_name": "Maximum channel members",
+        "type": "number",
+        "help_text": "",
+        "placeholder": "",
+        "default": null
+      }
+    ]
   }
 }
 `
